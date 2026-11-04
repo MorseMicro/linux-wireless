@@ -1212,37 +1212,38 @@ void mmrc_update(struct mmrc_table *tb)
 }
 
 void mmrc_feedback(struct mmrc_table *tb, struct mmrc_rate_table *rates,
-		   s32 retry_count, bool was_aggregated)
+		   bool was_aggregated, bool was_acked)
 {
-	s32 ind = retry_count;
+	s32 last_index = -1;
 	u32 i;
 
+	/*
+	 * Every attempt reported by the firmware is accounted as sent. Only
+	 * the final attempt of an acknowledged frame counts as a success; a
+	 * frame that exhausted its retry chain must not credit the last rate.
+	 */
 	for (i = 0; i < MMRC_MAX_CHAIN_LENGTH; i++) {
+		if (!rates->rates[i].attempts)
+			break;
+
 		rate_update_index(tb, &rates->rates[i]);
 		tb->table[rates->rates[i].index].have_sent_ampdus |=
 			was_aggregated;
-
-		if ((s32)rates->rates[i].attempts < ind) {
-			ind = ind - rates->rates[i].attempts;
-			tb->table[rates->rates[i].index].sent +=
+		tb->table[rates->rates[i].index].sent +=
+			rates->rates[i].attempts;
+		if (was_aggregated)
+			tb->table[rates->rates[i].index].back_mpdu_failure +=
 				rates->rates[i].attempts;
-			if (was_aggregated) {
-				tb->table[rates->rates[i].index]
-					.back_mpdu_failure +=
-					rates->rates[i].attempts;
-			}
-		} else {
-			tb->table[rates->rates[i].index].sent += ind;
-			tb->table[rates->rates[i].index].sent_success += 1;
-			if (was_aggregated) {
-				tb->table[rates->rates[i].index]
-					.back_mpdu_success += 1;
-				tb->table[rates->rates[i].index]
-					.back_mpdu_failure +=
-					ind > 1 ? ind - 1 : 0;
-			}
-			return;
-		}
+		last_index = i;
+	}
+
+	if (last_index < 0 || !was_acked)
+		return;
+
+	tb->table[rates->rates[last_index].index].sent_success += 1;
+	if (was_aggregated) {
+		tb->table[rates->rates[last_index].index].back_mpdu_success += 1;
+		tb->table[rates->rates[last_index].index].back_mpdu_failure -= 1;
 	}
 }
 

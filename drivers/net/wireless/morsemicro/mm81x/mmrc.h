@@ -184,7 +184,7 @@ size_t mmrc_memory_required_for_caps(struct mmrc_sta_capabilities *caps);
 void mmrc_get_rates(struct mmrc_table *tb, struct mmrc_rate_table *out,
 		    size_t size);
 void mmrc_feedback(struct mmrc_table *tb, struct mmrc_rate_table *rates,
-		   s32 retry_count, bool was_aggregated);
+		   bool was_aggregated, bool was_acked);
 void mmrc_update(struct mmrc_table *tb);
 bool mmrc_set_fixed_rate(struct mmrc_table *tb, struct mmrc_rate fixed_rate);
 u32 mmrc_calculate_theoretical_throughput(struct mmrc_rate rate);

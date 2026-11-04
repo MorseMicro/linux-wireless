@@ -341,8 +341,8 @@ void mm81x_rc_sta_fill_tx_rates(struct mm81x *mors,
 }
 
 static void mm81x_rc_sta_set_rates(struct mm81x *mors, struct mm81x_sta *msta,
-				   struct mmrc_rate_table *rates, int attempts,
-				   bool was_aggregated)
+				   struct mmrc_rate_table *rates,
+				   bool was_aggregated, bool was_acked)
 {
 	struct list_head *pos;
 
@@ -352,8 +352,8 @@ static void mm81x_rc_sta_set_rates(struct mm81x *mors, struct mm81x_sta *msta,
 			list_entry(pos, struct mm81x_rc_sta, list);
 
 		if (&msta->rc == mrc_sta) {
-			mmrc_feedback(msta->rc.tb, rates, attempts,
-				      was_aggregated);
+			mmrc_feedback(msta->rc.tb, rates, was_aggregated,
+				      was_acked);
 			break;
 		}
 	}
@@ -410,9 +410,11 @@ void mm81x_rc_sta_feedback_rates(struct mm81x *mors, struct sk_buff *skb,
 		msta->last_sta_tx_rate.guard = rates.rates[0].guard;
 	}
 
-	mm81x_rc_sta_set_rates(mors, msta, &rates, attempts,
+	mm81x_rc_sta_set_rates(mors, msta, &rates,
 			       !!(le32_to_cpu(tx_sts->flags) &
-				  MM81X_TX_STATUS_WAS_AGGREGATED));
+				  MM81X_TX_STATUS_WAS_AGGREGATED),
+			       !(le32_to_cpu(tx_sts->flags) &
+				 MM81X_TX_STATUS_FLAGS_NO_ACK));
 
 	ieee80211_sta_register_airtime(sta, tx_sts->tid, tx_airtime, 0);
 
