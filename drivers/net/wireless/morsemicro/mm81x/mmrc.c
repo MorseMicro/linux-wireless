@@ -500,9 +500,10 @@ static u16 find_baseline_index(struct mmrc_table *tb)
 
 /*
  * Fill out the remaining rates to be used once the best rate is selected.
- * Normally the retry rates are one MCS lower than the previous, however in
- * unconverged mode we limit the 3 respective retry rates to MCS 4, 2 and 0
- * respectively. The last retry rate is always MCS 0
+ * Normally the second rate is one MCS lower than the best rate and the third
+ * rate is one MCS lower again, capped at MCS 4. In unconverged mode the second
+ * and third rates are limited to MCS 4 and 2 respectively. The last retry
+ * rate is always MCS 0
  */
 static void mmrc_fill_retry_rates(struct mmrc_table *tb)
 {
@@ -522,6 +523,8 @@ static void mmrc_fill_retry_rates(struct mmrc_table *tb)
 		tb->best_prob.rate--;
 		if (tb->unconverged && tb->best_prob.rate > MMRC_MCS2)
 			tb->best_prob.rate = MMRC_MCS2;
+		else if (tb->best_prob.rate > MMRC_MCS4)
+			tb->best_prob.rate = MMRC_MCS4;
 		rate_update_index(tb, &tb->best_prob);
 	} else if (tb->best_prob.bw > MMRC_BW_1MHZ) {
 		tb->best_prob.bw--;
