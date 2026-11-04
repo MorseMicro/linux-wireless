@@ -68,7 +68,7 @@ enum mmrc_guard {
 };
 
 #define MMRC_RATE_TO_BITFIELD(x) ((x) & 0xF)
-#define MMRC_ATTEMPTS_TO_BITFIELD(x) ((x) & 0x7)
+#define MMRC_ATTEMPTS_TO_BITFIELD(x) ((x) & 0xF)
 #define MMRC_GUARD_TO_BITFIELD(x) ((x) & 0x1)
 #define MMRC_SS_TO_BITFIELD(x) ((x) & 0x3)
 #define MMRC_BW_TO_BITFIELD(x) ((x) & 0x7)
@@ -76,7 +76,7 @@ enum mmrc_guard {
 
 struct mmrc_rate {
 	u8 rate : 4;
-	u8 attempts : 3;
+	u8 attempts : 4;
 	u8 guard : 1;
 	u8 ss : 2;
 	u8 bw : 3;
