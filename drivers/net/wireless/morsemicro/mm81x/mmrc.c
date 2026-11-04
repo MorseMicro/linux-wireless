@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2017-2026 Morse Micro
  */
+#include <linux/array_size.h>
 #include <linux/bitops.h>
 
 #include "mmrc.h"
@@ -44,13 +45,6 @@
  * if there are enough packets
  */
 #define LOOKAROUND_RATE_ATTEMPTS 4
-
-/*
- * Limit the number of times we try to pick a theoretically better rate to
- * sample. Necessary so we don't stall the CPU, due to constantly picking worse
- * rates.
- */
-#define LOOKAROUND_FAIL_MAX 200
 
 /*
  * Initial and reset probability per rate in the table
@@ -434,7 +428,9 @@ static u32 calculate_throughput(struct mmrc_table *tb, u8 index)
 	 * precision as the throughput is already multiplied by 1000 in
 	 * mmrc_calculate_theoretical_throughput (returned as bits/sec)
 	 */
-	if (tb->table[rate.index].prob < 10)
+	if (tb->table[rate.index].evidence == 0)
+		return mmrc_calculate_theoretical_throughput(rate);
+	else if (tb->table[rate.index].prob < 10)
 		return 0;
 	else if (rate.index == tb->best_tp.index && tb->interference_likely)
 		/*
@@ -543,6 +539,46 @@ static void mmrc_fill_retry_rates(struct mmrc_table *tb)
 }
 
 /*
+ * Fills out the array of candidate lookaround rates for the next rate period
+ */
+static void generate_lookaround_candidates(struct mmrc_table *tb, u32 best_tp)
+{
+	struct mmrc_rate rate;
+	u32 rate_tp;
+	u16 i;
+
+	tb->num_lookaround_candidates = 0;
+
+	for (i = 0; i < rows_from_sta_caps(&tb->caps); i++) {
+		rate = get_rate_row(tb, i);
+		if (!validate_rate(tb, &rate))
+			continue;
+
+		/*
+		 * Sample rates that are no more than one MCS or one bandwidth
+		 * level higher and don't increase both at once. It will avoid
+		 * sampling rates which have very low success. In case of
+		 * better environment conditions MMRC will collect enough
+		 * statistics to climb up the rates one by one.
+		 */
+		if (rate.rate > tb->best_tp.rate + 1 ||
+		    rate.bw > tb->best_tp.bw + 1 ||
+		    (rate.rate > tb->best_tp.rate && rate.bw > tb->best_tp.bw))
+			continue;
+
+		rate_tp = calculate_throughput(tb, rate.index);
+		if (rate_tp <= best_tp)
+			continue;
+
+		tb->lookaround_candidates[tb->num_lookaround_candidates++] =
+			rate;
+		if (tb->num_lookaround_candidates >=
+		    ARRAY_SIZE(tb->lookaround_candidates))
+			break;
+	}
+}
+
+/*
  * Updates the mmrc_table with the appropriate rate priority based on the
  * latest update statistics
  */
@@ -606,16 +642,22 @@ static void generate_table_priority(struct mmrc_table *tb, u32 new_stats)
 			last_nonzero_prob = tmp.index;
 	}
 
+	/* The best rate needs to be updated before selecting lookaround rates */
+	if (new_stats) {
+		tb->best_tp = get_rate_row(tb, best_row);
+		if (best_tp == 0 && tb->best_tp.rate > MMRC_MCS0) {
+			/* Drop one rate, as the best throughput is zero */
+			tb->best_tp.rate--;
+			rate_update_index(tb, &tb->best_tp);
+		}
+	}
+
+	generate_lookaround_candidates(tb, best_tp);
+
 	/* Only update rates and stability when there are new statistics */
 	if (!new_stats)
 		return;
 
-	tb->best_tp = get_rate_row(tb, best_row);
-	if (best_tp == 0 && tb->best_tp.rate > MMRC_MCS0) {
-		/* Drop one rate, as the best throughput is zero */
-		tb->best_tp.rate--;
-		rate_update_index(tb, &tb->best_tp);
-	}
 	tb->second_tp = get_rate_row(tb, second_best_row);
 	mmrc_fill_retry_rates(tb);
 
@@ -784,17 +826,13 @@ void mmrc_get_rates(struct mmrc_table *tb, struct mmrc_rate_table *out,
 		    size_t size)
 {
 	u8 i;
-	u16 random_index;
 	struct mmrc_rate random;
 	struct mmrc_rate lookaround0 = tb->best_tp;
 	struct mmrc_rate lookaround1 = tb->second_tp;
 	bool is_lookaround;
 	int lookaround_index = -1;
-	int best_index = 0;
-	int random_tp = 0;
-	int best_tp;
-	int lookaround_fail_count;
-	bool try_current_lookaround = false;
+	u16 best_index = 0;
+	u32 candidate_index;
 
 	s32 rem_time = RATE_WINDOW_MICROSECONDS;
 
@@ -809,10 +847,6 @@ void mmrc_get_rates(struct mmrc_table *tb, struct mmrc_rate_table *out,
 			((tb->lookaround_cnt == 0) ||
 			 ((tb->last_lookaround_cycle +
 			   LOOKAROUND_MAX_RC_CYCLES) <= tb->cycle_cnt));
-
-	/* Also skip sampling if we don't yet have data for our best rate */
-	if (tb->table[tb->best_tp.index].evidence == 0)
-		is_lookaround = false;
 
 	if (tb->lookaround_wrap != LOOKAROUND_RATE_STABLE) {
 		if (tb->stability_cnt >= tb->stability_cnt_threshold) {
@@ -829,86 +863,34 @@ void mmrc_get_rates(struct mmrc_table *tb, struct mmrc_rate_table *out,
 	}
 
 	/* Look around only when the fixed rate is not set */
-	if (is_lookaround) {
+	if (is_lookaround && tb->num_lookaround_candidates > 0) {
 		tb->total_lookaround++;
 		tb->forced_lookaround =
 			(tb->forced_lookaround + 1) % LOOKAROUND_RATE_NORMAL;
 		tb->last_lookaround_cycle = tb->cycle_cnt;
 
 		if (tb->current_lookaround_rate_attempts <
-		    LOOKAROUND_RATE_ATTEMPTS)
-			try_current_lookaround = true;
-
-		best_tp = calculate_throughput(tb, tb->best_tp.index);
-
-		for (lookaround_fail_count = 0;
-		     lookaround_fail_count < LOOKAROUND_FAIL_MAX;
-		     lookaround_fail_count++) {
-			if (try_current_lookaround) {
-				random_index =
-					tb->current_lookaround_rate_index;
-				try_current_lookaround = false;
-			} else {
-				random_index = get_random_u32_below(
-					rows_from_sta_caps(&tb->caps));
-			}
-			random = get_rate_row(tb, random_index);
-
-			if (!validate_rate(tb, &random))
-				continue;
-
-			if (random.rate == MMRC_MCS10)
-				continue;
-
-			if (tb->table[random_index].evidence > 0)
-				random_tp =
-					calculate_throughput(tb, random_index);
-			else
-				random_tp =
-					mmrc_calculate_theoretical_throughput(
-						random);
-
-			/*
-			 * Skip rates that can only be worse than the current
-			 * best
-			 */
-			if (random_tp <= best_tp)
-				continue;
-
-			/*
-			 * Force looking up the rate no more that one MCS.
-			 * It will avoid looking for rates with very low
-			 * success rate. In case of better environment
-			 * conditions MMRC will collect enough statistics to
-			 * climb up the rates one by one.
-			 */
-			if (random.rate > tb->best_tp.rate + 1 ||
-			    random.bw > tb->best_tp.bw + 1 ||
-			    (random.rate > tb->best_tp.rate &&
-			     random.bw > tb->best_tp.bw))
-				continue;
-
-			if (tb->current_lookaround_rate_index == random_index) {
-				tb->current_lookaround_rate_attempts++;
-			} else {
-				tb->current_lookaround_rate_attempts = 0;
-				tb->current_lookaround_rate_index =
-					random_index;
-			}
-
-			break;
+		    LOOKAROUND_RATE_ATTEMPTS) {
+			random = get_rate_row(tb,
+					      tb->current_lookaround_rate_index);
+		} else {
+			candidate_index = get_random_u32_below(
+				tb->num_lookaround_candidates);
+			random = tb->lookaround_candidates[candidate_index];
+			tb->current_lookaround_rate_index = random.index;
 		}
 
-		if (lookaround_fail_count >= LOOKAROUND_FAIL_MAX) {
-			is_lookaround = false;
-			tb->current_lookaround_rate_index = tb->best_tp.index;
-		} else {
+		if (validate_rate(tb, &random)) {
 			lookaround0 = random;
 			lookaround1 = tb->best_tp;
 			lookaround_index = 0;
 			best_index = 1;
 		}
 	}
+
+	/* No usable lookaround rate, send the normal rate table */
+	if (lookaround_index < 0)
+		is_lookaround = false;
 
 	if (tb->caps.max_rates == 1) {
 		out->rates[0] = (is_lookaround) ? lookaround0 : tb->best_tp;
@@ -1315,6 +1297,7 @@ void mmrc_sta_init(struct mmrc_table *tb, struct mmrc_sta_capabilities *caps,
 	tb->last_lookaround_cycle = 0;
 	tb->lookaround_cnt = 0;
 	tb->lookaround_wrap = LOOKAROUND_RATE_INIT;
+	tb->num_lookaround_candidates = 0;
 	tb->unconverged = true;
 	tb->newly_unconverged = true;
 	tb->stability_cnt_threshold = STABILITY_CNT_THRESHOLD_INIT;

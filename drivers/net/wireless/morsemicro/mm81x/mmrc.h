@@ -25,6 +25,9 @@
 /* The frequency of MMRC stat table updates */
 #define MMRC_UPDATE_FREQUENCY_MS 100
 
+/* The maximum number of lookaround candidates */
+#define MMRC_MAX_LOOKAROUND_CANDIDATES 10
+
 enum mmrc_flags {
 	MMRC_FLAGS_CTS_RTS,
 };
@@ -170,6 +173,10 @@ struct mmrc_table {
 	 * unchanged
 	 */
 	s32 best_rate_cycle_count;
+
+	/* Candidate lookaround rates, regenerated every update cycle */
+	struct mmrc_rate lookaround_candidates[MMRC_MAX_LOOKAROUND_CANDIDATES];
+	u32 num_lookaround_candidates;
 
 	/*
 	 * The probability table for the STA. This MUST always be the last
