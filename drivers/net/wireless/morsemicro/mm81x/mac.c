@@ -48,9 +48,6 @@
 /* Max rate attempts */
 #define MM81X_HW_MAX_RATE_TRIES (1)
 
-/* Max sk pacing shift */
-#define MM81X_HW_TX_SK_PACING_SHIFT (3)
-
 /* NSS/MCS map values */
 #define MM81X_NSS_MCS_BYTE_0 0xfe /* 1SS */
 #define MM81X_NSS_MCS_BYTE_1 0x00
@@ -2410,7 +2407,6 @@ static void mm81x_mac_config_hw(struct mm81x *mors)
 	hw->max_rates = MM81X_HW_MAX_RATES;
 	hw->max_report_rates = MM81X_HW_MAX_REPORT_RATES;
 	hw->max_rate_tries = MM81X_HW_MAX_RATE_TRIES;
-	hw->tx_sk_pacing_shift = MM81X_HW_TX_SK_PACING_SHIFT;
 	hw->vif_data_size = sizeof(struct mm81x_vif);
 	hw->sta_data_size = sizeof(struct mm81x_sta);
 	hw->extra_tx_headroom =
