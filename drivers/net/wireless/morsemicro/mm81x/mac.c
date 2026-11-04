@@ -26,12 +26,6 @@
 /* Calculate average RSSI for Rx status */
 #define CALC_AVG_RSSI(_avg, _sample) ((((_avg) * 9 + (_sample)) / 10))
 
-/*
- * When automatically trying MCS0 before MCS10, this is how many
- * MCS0 attempts to make
- */
-#define MCS0_BEFORE_MCS10_COUNT (1)
-
 /* Maximum TX power (default) */
 #define MAX_TX_POWER_MBM (2200)
 
@@ -1049,87 +1043,6 @@ int mm81x_mac_event_recv(struct mm81x *mors, struct sk_buff *skb)
 	return 0;
 }
 
-static void mm81x_tx_h_apply_mcs10(struct mm81x *mors,
-				   struct mm81x_skb_tx_info *tx_info)
-{
-	u8 i;
-	u8 j;
-	int mcs0_first_idx = -1;
-	int mcs0_last_idx = -1;
-
-	/* Find out where our first and last MCS0 entries are. */
-	for (i = 0; i < IEEE80211_TX_MAX_RATES; i++) {
-		enum dot11_bandwidth bw_idx = mm81x_ratecode_bw_index_get(
-			tx_info->rates[i].mm81x_ratecode);
-
-		if (bw_idx == DOT11_BANDWIDTH_1MHZ) {
-			mcs0_last_idx = i;
-			if (mcs0_first_idx == -1)
-				mcs0_first_idx = i;
-		}
-
-		/*
-		 * If the count is 0 then we are at the end of the table.
-		 * Break to allow us to reuse i indicating the end of the
-		 * table.
-		 */
-		if (tx_info->rates[i].count == 0)
-			break;
-	}
-
-	/* If there aren't any MCS0 (at 1MHz) entries we are done. */
-	if (mcs0_first_idx < 0)
-		return;
-
-	/*
-	 * If we are in MCS10_MODE_AUTO add MCS10 counts to the table if they
-	 * will fit. There should be three cases:
-	 *
-	 * - There is one MSC0 entry and the table is full -> do nothing
-	 * - There is one MSC0 entry and the table has space -> adjust MSC0
-	 *   down and add MCS 10
-	 * - There are multiple MCS0 entries -> replace entries after the first
-	 *   with MCS 10
-	 */
-	/* Case 3 - replace additional entries. */
-	if (mcs0_last_idx > mcs0_first_idx) {
-		for (j = mcs0_first_idx + 1; j < i; j++) {
-			enum dot11_bandwidth bw_idx =
-				mm81x_ratecode_bw_index_get(
-					tx_info->rates[j].mm81x_ratecode);
-			u8 mcs_index = mm81x_ratecode_mcs_index_get(
-				tx_info->rates[j].mm81x_ratecode);
-			if (mcs_index == 0 && bw_idx == DOT11_BANDWIDTH_1MHZ) {
-				mm81x_ratecode_mcs_index_set(
-					&tx_info->rates[j].mm81x_ratecode, 10);
-			}
-		}
-		/* Case 2 - add additional MCS10 entry. */
-	} else if (mcs0_last_idx == mcs0_first_idx &&
-		   i < (IEEE80211_TX_MAX_RATES)) {
-		int pre_mcs10_mcs0_count =
-			min_t(u8, tx_info->rates[mcs0_last_idx].count,
-			      MCS0_BEFORE_MCS10_COUNT);
-		int mcs10_count = tx_info->rates[mcs0_last_idx].count -
-				  pre_mcs10_mcs0_count;
-
-		/*
-		 * If there were less retries than our desired minimum MCS0 we
-		 * don't add MCS10 retries.
-		 */
-		if (mcs10_count > 0) {
-			/* Use the same flags for MCS10 as MCS0. */
-			tx_info->rates[i].mm81x_ratecode =
-				tx_info->rates[mcs0_last_idx].mm81x_ratecode;
-			mm81x_ratecode_mcs_index_set(
-				&tx_info->rates[i].mm81x_ratecode, 10);
-			tx_info->rates[mcs0_last_idx].count =
-				pre_mcs10_mcs0_count;
-			tx_info->rates[i].count = mcs10_count;
-		}
-	}
-}
-
 void mm81x_tx_h_check_aggr(struct ieee80211_sta *pubsta, struct sk_buff *skb)
 {
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
@@ -1204,9 +1117,6 @@ static void mm81x_tx_h_fill_info(struct mm81x *mors,
 			mm81x_ratecode_enable_sgi(
 				&tx_info->rates[i].mm81x_ratecode);
 	}
-
-	/* Apply change of MCS0 to MCS10 if required. */
-	mm81x_tx_h_apply_mcs10(mors, tx_info);
 
 	tx_info->flags |=
 		cpu_to_le32(MM81X_TX_CONF_FLAGS_VIF_ID_SET(mors_vif->id));
