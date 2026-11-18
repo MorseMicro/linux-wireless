@@ -2022,6 +2022,22 @@ static void mm81x_rx_h_update_sta(struct ieee80211_sta *sta,
 	}
 }
 
+/*
+ * The chip receives 1MHz PPDUs on any 1MHz channel within the operating
+ * channel. Probe requests sent outside the primary channel are from STAs
+ * that can't hear our response, so don't pass them up.
+ */
+static bool mm81x_rx_h_is_off_chan_probe_req(struct mm81x *mors,
+					     struct ieee80211_hdr *hdr,
+					     struct ieee80211_rx_status *rx_status)
+{
+	if (mors->monitor_en || !ieee80211_is_probe_req(hdr->frame_control))
+		return false;
+
+	return ieee80211_rx_status_to_khz(rx_status) !=
+	       ieee80211_channel_to_khz(mors->chandef.chan);
+}
+
 static struct ieee80211_vif *
 mm81x_rx_h_skb_get_vif(struct mm81x *mors, struct sk_buff *skb,
 		       struct mm81x_skb_rx_status *hdr_rx_status)
@@ -2058,6 +2074,11 @@ void mm81x_mac_rx_skb(struct mm81x *mors, struct sk_buff *skb,
 							       hdr->addr2;
 
 	mm81x_rx_h_fill_status(mors, hdr_rx_status, &rx_status, skb);
+
+	if (mm81x_rx_h_is_off_chan_probe_req(mors, hdr, &rx_status)) {
+		dev_kfree_skb_any(skb);
+		return;
+	}
 
 	guard(rcu)();
 	vif = mm81x_rx_h_skb_get_vif(mors, skb, hdr_rx_status);
