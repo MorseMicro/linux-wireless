@@ -384,7 +384,7 @@ static int mm81x_fw_get_flags(struct mm81x *mors)
 
 static int mm81x_fw_check_compatibility(struct mm81x *mors)
 {
-	int ret = 0;
+	int ret;
 	u32 fw_version;
 	u32 major;
 	u32 minor;
@@ -397,23 +397,30 @@ static int mm81x_fw_check_compatibility(struct mm81x *mors)
 						fw_version_number),
 			       &fw_version);
 	mm81x_release_bus(mors);
+	if (ret)
+		return ret;
 
 	major = MM81X_SEMVER_GET_MAJOR(fw_version);
 	minor = MM81X_SEMVER_GET_MINOR(fw_version);
 	patch = MM81X_SEMVER_GET_PATCH(fw_version);
 
+	dev_info(mors->dev, "Firmware API version %u.%u.%u\n", major, minor,
+		 patch);
+
 	/* Firmware on device must match the firmware file we requested */
-	if (ret == 0 && major != mors->fw_major) {
+	if (major != mors->fw_major) {
 		dev_err(mors->dev,
 			"Incompatible FW version: (Requested) v%u, (Chip) %d.%d.%d\n",
 			mors->fw_major, major, minor, patch);
-		ret = -EPERM;
-	} else if (ret == 0 && major != HOST_CMD_SEMVER_MAJOR) {
+		return -EPERM;
+	}
+
+	if (major != HOST_CMD_SEMVER_MAJOR) {
 		dev_warn(
 			mors->dev,
 			"Running FW v%d.%d.%d, driver supports up to v%d, some features might not be supported",
 			major, minor, patch, HOST_CMD_SEMVER_MAJOR);
-	} else if (ret == 0 && minor != HOST_CMD_SEMVER_MINOR) {
+	} else if (minor != HOST_CMD_SEMVER_MINOR) {
 		dev_warn(
 			mors->dev,
 			"FW version mismatch, some features might not be supported: (Driver) %d.%d.%d, (Chip) %d.%d.%d",
@@ -421,7 +428,7 @@ static int mm81x_fw_check_compatibility(struct mm81x *mors)
 			HOST_CMD_SEMVER_PATCH, major, minor, patch);
 	}
 
-	return ret;
+	return 0;
 }
 
 static int mm81x_fw_invalidate_host_ptr(struct mm81x *mors)

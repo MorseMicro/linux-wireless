@@ -1916,6 +1916,22 @@ static void mm81x_rx_h_add_rt_s1g_tlv(struct sk_buff *skb,
  * This is a hack to workaround how our firmware reports frequencies.
  * For any 1MHz frames report them directly (i.e during scanning), else
  * report the 1MHz control channel we are tuned to.
+ *
+ * Unfortunately, the new channel_info field reported by the v57
+ * is actually not what we are after. The part of the channel_info
+ * field reports the index of the _first_ 1MHz channel of the
+ * channel it was transmitted on. This is because the firmware is
+ * _really_ reporting the subband carrier offset, not the control
+ * channel the radio was tuned to during reception.
+ *
+ * For example, say an 8MHz operating on channel 44 with a 1MHz
+ * primary of 39. If a frame is transmitted on the 4MHz primary,
+ * the channel_info will convey the 1MHz index as 0, even though
+ * the primary 1MHz we were tuned was index 1. For a frame
+ * transmitted at 8MHz, the index is _always_ zero.
+ *
+ * This means we unfortunately need to keep using this for both
+ * v56 and v57 firmware in the meantime.
  */
 static void mm81x_rx_h_fill_freq(struct mm81x *mors, u32 rx_khz,
 				 struct ieee80211_rx_status *rx_status)

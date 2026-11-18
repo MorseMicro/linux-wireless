@@ -365,3 +365,5 @@ const struct mm81x_regs mm8108_regs = {
 
 MODULE_FIRMWARE(MM81X_FW_DIR "/v" __stringify(MM81X_FW_VER_MAX) "/"
 		MM8108_FW_BASE MM81X_FW_EXT);
+MODULE_FIRMWARE(MM81X_FW_DIR "/v" __stringify(MM81X_FW_VER_MIN) "/"
+		MM8108_FW_BASE MM81X_FW_EXT);

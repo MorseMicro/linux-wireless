@@ -104,7 +104,15 @@ struct mm81x_skb_tx_status {
 	__le32 pkt_id;
 	u8 tid;
 	u8 channel;
-	__le16 ampdu_info;
+	union {
+		struct {
+			__le16 ampdu_info;
+		} __packed v56;
+		struct {
+			u8 per_attempt_ampdu_info;
+			u8 per_attempt_missing_block_ack;
+		} __packed v57;
+	};
 	struct mm81x_skb_rate_info rates[MM81X_SKB_MAX_RATES];
 } __packed;
 
@@ -150,8 +158,16 @@ struct mm81x_skb_rx_status {
 	__le16 freq_100khz;
 	u8 bss_color;
 	s8 noise_dbm;
-	/** Padding for word alignment */
-	u8 padding[2];
+	union {
+		struct {
+			/** Padding for word alignment */
+			u8 padding[2];
+		} __packed v56;
+		struct {
+			u8 channel_info;
+			u8 padding;
+		} __packed v57;
+	};
 	__le64 rx_timestamp_us;
 } __packed;
 
