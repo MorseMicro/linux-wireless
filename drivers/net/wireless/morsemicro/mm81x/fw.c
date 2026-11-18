@@ -62,6 +62,9 @@ static void mm81x_fw_parse_info(struct mm81x *mors, const u8 *data, int length)
 		case MM81X_FW_INFO_TLV_BCF_ADDR:
 			mors->bcf_address = get_unaligned_le32(tlv->val);
 			break;
+		case MM81X_FW_INFO_TLV_BCF_SIZE:
+			mors->bcf_size = get_unaligned_le32(tlv->val);
+			break;
 		default:
 			break;
 		}
@@ -167,6 +170,7 @@ static int mm81x_fw_load_fw(struct mm81x *mors, const struct firmware *fw)
 		}
 	}
 
+	mors->bcf_size = BCF_DEFAULT_SIZE;
 	for (i = 0; i < ehdr.e_shnum; i++) {
 		if (mm81x_fw_get_section_header(fw->data, &ehdr, &shdr, i))
 			continue;
@@ -195,7 +199,7 @@ static int __mm81x_fw_load_bcf(struct mm81x *mors, unsigned int addr,
 
 	if (rounded > scratch_cap)
 		return -EINVAL;
-	if (rounded > BCF_DATABASE_SIZE)
+	if (rounded > mors->bcf_size)
 		return -EFBIG;
 
 	memcpy(scratch, src, src_len);
@@ -286,7 +290,7 @@ static int mm81x_fw_load_bcf(struct mm81x *mors, const struct firmware *bcf,
 		goto out_free;
 
 	reg_len_rounded = ROUND_BYTES_TO_WORD(reg_len);
-	if ((cfg_len_rounded + reg_len_rounded) > BCF_DATABASE_SIZE) {
+	if ((cfg_len_rounded + reg_len_rounded) > mors->bcf_size) {
 		ret = -EFBIG;
 		goto out_free;
 	}

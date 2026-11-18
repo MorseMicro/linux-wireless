@@ -12,7 +12,7 @@
 #include "command_defs.h"
 #include "yaps_hw.h"
 
-#define BCF_DATABASE_SIZE (1024)
+#define BCF_DEFAULT_SIZE (1024)
 #define MM81X_FW_DIR "morsemicro/mm81x"
 #define MM81X_FW_EXT ".bin"
 
@@ -65,6 +65,7 @@ struct mm81x_elf32_phdr {
 
 enum mm81x_fw_info_tlv_type {
 	MM81X_FW_INFO_TLV_BCF_ADDR = 1,
+	MM81X_FW_INFO_TLV_BCF_SIZE = 3,
 };
 
 struct mm81x_fw_info_tlv {

@@ -312,6 +312,7 @@ struct mm81x {
 	/* Refer to @enum mm81x_bus_type */
 	u32 bus_type;
 	u32 bcf_address;
+	u32 bcf_size;
 
 	/*
 	 * Parsed from the release tag, which should be in the format
