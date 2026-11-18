@@ -2043,23 +2043,22 @@ void mm81x_mac_rx_skb(struct mm81x *mors, struct sk_buff *skb,
 
 	mm81x_rx_h_fill_status(mors, hdr_rx_status, &rx_status, skb);
 
-	scoped_guard(rcu) {
-		vif = mm81x_rx_h_skb_get_vif(mors, skb, hdr_rx_status);
-		if (vif) {
-			sta = ieee80211_find_sta(vif, lookup);
-			if (sta)
-				mm81x_rx_h_update_sta(sta, &rx_status);
-		}
-
-		if (mors->monitor_en)
-			mm81x_rx_h_add_rt_s1g_tlv(skb, hdr_rx_status, &rx_status);
-
-		memcpy(IEEE80211_SKB_RXCB(skb), &rx_status, sizeof(rx_status));
-
-		local_bh_disable();
-		ieee80211_rx_napi(hw, sta ? &sta->deflink : NULL, skb, NULL);
-		local_bh_enable();
+	guard(rcu)();
+	vif = mm81x_rx_h_skb_get_vif(mors, skb, hdr_rx_status);
+	if (vif) {
+		sta = ieee80211_find_sta(vif, lookup);
+		if (sta)
+			mm81x_rx_h_update_sta(sta, &rx_status);
 	}
+
+	if (mors->monitor_en)
+		mm81x_rx_h_add_rt_s1g_tlv(skb, hdr_rx_status, &rx_status);
+
+	memcpy(IEEE80211_SKB_RXCB(skb), &rx_status, sizeof(rx_status));
+
+	local_bh_disable();
+	ieee80211_rx_napi(hw, sta ? &sta->deflink : NULL, skb, NULL);
+	local_bh_enable();
 }
 
 static void mm81x_mac_flush_queues(struct mm81x *mors)
