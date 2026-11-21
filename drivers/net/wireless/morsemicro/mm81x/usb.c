@@ -257,6 +257,7 @@ static int mm81x_usb_cmd(struct mm81x_usb *musb,
 		msecs_to_jiffies(URB_TIMEOUT_MS));
 	if (retval < 0) {
 		dev_err(mors->dev, "error waiting for urb %d", retval);
+		usb_kill_urb(ep->urb);
 		goto error;
 	} else if (retval == 0) {
 		dev_err(mors->dev, "timed out waiting for urb");
@@ -366,6 +367,7 @@ static int mm81x_usb_mem_read(struct mm81x_usb *musb, u32 address, u8 *data,
 		msecs_to_jiffies(URB_TIMEOUT_MS));
 	if (ret < 0) {
 		dev_err(mors->dev, "wait_event_interruptible: error %d", ret);
+		usb_kill_urb(musb->endpoints[MM81X_EP_MEM_RD].urb);
 		goto error;
 	} else if (ret == 0) {
 		/* Timed out. */
@@ -436,6 +438,7 @@ static int mm81x_usb_mem_write(struct mm81x_usb *musb, u32 address, u8 *data,
 		msecs_to_jiffies(URB_TIMEOUT_MS));
 	if (ret < 0) {
 		dev_err(mors->dev, "error %d", ret);
+		usb_kill_urb(musb->endpoints[MM81X_EP_MEM_WR].urb);
 		goto error;
 	} else if (ret == 0) {
 		/* Timed out. */
