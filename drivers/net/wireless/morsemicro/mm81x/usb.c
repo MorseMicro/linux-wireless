@@ -267,7 +267,7 @@ static int mm81x_usb_cmd(struct mm81x_usb *musb,
 	}
 
 	musb->ongoing_cmd = false;
-	return writesize;
+	return musb->errors ? musb->errors : writesize;
 
 error:
 	musb->ongoing_cmd = false;
